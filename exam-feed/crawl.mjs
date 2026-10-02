@@ -248,7 +248,7 @@ async function main() {
   // TODO: ssc.gov.in (SPA + session-gated API), rrbapply.gov.in (JS shell)
 
   fs.mkdirSync(FEED_DIR, { recursive: true });
-  // merge (cap 300): ALL known entries (fresh ∪ previous) grouped by
+  // merge (cap 1000): ALL known entries (fresh ∪ previous) grouped by
   // organization, taken ROUND-ROBIN (fresh first within each org) so every
   // source stays represented and no source can flood the others out
   const prev = fs.existsSync(FEED_FILE) ? JSON.parse(fs.readFileSync(FEED_FILE, 'utf8')) : [];
@@ -264,13 +264,14 @@ async function main() {
   for (const list of buckets.values()) list.sort((a, b) => Number(b.fresh) - Number(a.fresh));
   const merged = [];
   let progressed = true;
-  while (merged.length < 300 && progressed) {
+  const FEED_CAP = 1000;
+  while (merged.length < FEED_CAP && progressed) {
     progressed = false;
     for (const list of buckets.values()) {
       if (list.length) {
         merged.push(list.shift());
         progressed = true;
-        if (merged.length >= 300) break;
+        if (merged.length >= FEED_CAP) break;
       }
     }
   }
