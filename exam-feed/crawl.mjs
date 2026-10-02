@@ -30,6 +30,15 @@ const EXACT_HOSTS = ['nta.ac.in', 'ibps.in', 'www.ibps.in'];
 
 const stripTags = (s) => s.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 
+/** Classify a notification by its title keywords — the app uses this to split
+ *  the mixed feed into Jobs & Notices / Results & Keys / Admit Cards tabs. */
+function classifyNotice(title) {
+  const t = title.toLowerCase();
+  if (/admit card|call letter|hall ticket|city intimation/.test(t)) return 'admit';
+  if (/result|merit list|answer key|score|rank|recommend(ed|ation)|selected candidat|cut ?off|marks/.test(t)) return 'result';
+  return 'notice';
+}
+
 function isAllowedHost(hostname) {
   const h = hostname.toLowerCase();
   return /\.(gov\.in|nic\.in)$/.test(h) || EXACT_HOSTS.includes(h);
@@ -55,6 +64,7 @@ async function crawlUpsc() {
       id: `upsc_${hash(pdfUrl)}`,
       title: title.slice(0, 180),
       organization: 'UPSC',
+      noticeType: classifyNotice(title),
       pdfUrl,
       // UPSC's list does not expose application deadlines — the app marks
       // these entries "dates unverified" instead of inventing one.
@@ -87,6 +97,7 @@ async function crawlNta() {
       id: `nta_${hash(pdfUrl)}`,
       title: title.slice(0, 180),
       organization: 'NTA',
+      noticeType: classifyNotice(title),
       pdfUrl,
       lastDate: null,
       crawledAt: new Date().toISOString(),
@@ -134,6 +145,7 @@ async function crawlIbps() {
       id: `ibps_${hash(pdfUrl)}`,
       title,
       organization: 'IBPS',
+      noticeType: classifyNotice(title),
       pdfUrl,
       lastDate: null,
       crawledAt: new Date().toISOString(),
