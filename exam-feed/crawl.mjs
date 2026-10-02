@@ -160,6 +160,68 @@ function hash(s) {
   return Math.abs(h).toString(36);
 }
 
+/**
+ * Generic state-portal parser: state PSC/Board homepages that list official
+ * PDF notices as anchors. Title priority: the anchor's title="…" attribute
+ * (MPPSC/DSSSB carry full notice titles there) → anchor text → filename.
+ * Verified crawlable (2026-10-02): BPSC, MPPSC, RPSC, DSSSB.
+ * TODO (not crawlable honestly): UPPSC/MPSC (JS shells), WBPSC (unreachable).
+ */
+async function crawlStatePortal(org, stateName, url, opts = {}) {
+  // gov portals drop connections intermittently — one retry on failure.
+  // Some portals (BPSC) reject Node's TLS handshake entirely → viaCurl mode.
+  let html = null;
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2 && !html; attempt++) {
+    try {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 3000));
+      html = opts?.viaCurl
+        ? fetchWithCurl(url)
+        : await (async () => {
+            const res = await fetch(url, {
+              headers: { 'User-Agent': UA },
+              signal: AbortSignal.timeout(30000),
+            });
+            if (!res.ok) throw new Error(`${url} responded ${res.status}`);
+            return res.text();
+          })();
+      if (!html) throw new Error('empty response');
+      break;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (!html) throw lastErr ?? new Error(`${url} unreachable after retries`);
+  const out = [];
+  const re = /<a\s[^>]*href="([^"]+\.pdf[^"]*)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const pdfUrl = new URL(m[1], url).toString();
+    if (!isAllowedHost(new URL(pdfUrl).hostname)) continue;
+    // title="…" attribute carries the full notice title on several portals
+    const titleAttrMatch = m[0].match(/title="([^"]{10,200})"/);
+    const anchorText = stripTags(m[2]);
+    const fileName = decodeURIComponent(pdfUrl.split('/').pop())
+      .replace(/\.pdf$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .trim();
+    const title = (titleAttrMatch?.[1] || (anchorText && anchorText.length > 12 ? anchorText : fileName) || 'Notification')
+      .slice(0, 180);
+    out.push({
+      id: `${org}_${hash(pdfUrl)}`,
+      title: `${stateName}: ${title}`,
+      organization: org,
+      category: 'state',
+      stateName,
+      noticeType: classifyNotice(title),
+      pdfUrl,
+      lastDate: null,
+      crawledAt: new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
 async function main() {
   const entries = [];
   const failures = [];
@@ -167,6 +229,11 @@ async function main() {
     ['upsc', crawlUpsc],
     ['nta', crawlNta],
     ['ibps', crawlIbps],
+    // state portals — verified crawlable (see crawlStatePortal notes)
+    ['bpsc', () => crawlStatePortal('BPSC', 'Bihar', 'https://bpsc.bihar.gov.in', { viaCurl: true })],
+    ['mppsc', () => crawlStatePortal('MPPSC', 'Madhya Pradesh', 'https://mppsc.mp.gov.in')],
+    ['rpsc', () => crawlStatePortal('RPSC', 'Rajasthan', 'https://rpsc.rajasthan.gov.in')],
+    ['dsssb', () => crawlStatePortal('DSSSB', 'Delhi', 'https://dsssb.delhi.gov.in')],
   ];
   for (const [name, fn] of sources) {
     try {
