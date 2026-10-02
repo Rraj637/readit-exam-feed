@@ -209,7 +209,7 @@ async function crawlStatePortal(org, stateName, url, opts = {}) {
       .slice(0, 180);
     out.push({
       id: `${org}_${hash(pdfUrl)}`,
-      title: `${stateName}: ${title}`,
+      title: title.slice(0, 180), // no state prefix — the app card adds "🗺️ State:" itself
       organization: org,
       category: 'state',
       stateName,
