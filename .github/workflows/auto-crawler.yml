@@ -1,0 +1,40 @@
+name: Automatic Exam Bulletin Crawler
+
+# Runs the crawler every 6 hours against government portals and commits the
+# merged feed JSON. HONEST SCOPE: only the UPSC whats-new parser is real
+# today (ssc.gov.in is a JS SPA, ibps.in needs a custom parser) — see
+# exam-feed/crawl.mjs comments before adding portals.
+
+on:
+  schedule:
+    - cron: '0 0,6,12,18 * * *'
+  workflow_dispatch: {} # manual run button
+
+permissions:
+  contents: write
+
+jobs:
+  crawl-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run crawler
+        working-directory: exam-feed
+        run: node crawl.mjs
+
+      - name: Commit updated feed
+        run: |
+          git config --global user.name 'readit-crawler-bot'
+          git config --global user.email 'bot@users.noreply.github.com'
+          git add exam-feed/feeds/job_bulletins.json
+          if git diff --cached --quiet; then
+            echo 'No feed changes'
+          else
+            git commit -m 'crawl: refresh exam bulletin feed'
+            git push
+          fi
